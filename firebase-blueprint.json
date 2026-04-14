@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role-based access control.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "moderator", "participant"] },
+        "displayName": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student record for Instrumen 25.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nim": { "type": "string" },
+        "name": { "type": "string" },
+        "origin": { "type": "string" },
+        "nickname": { "type": "string" },
+        "avatarUrl": { "type": "string", "format": "uri" },
+        "addedBy": { "type": "string" }
+      },
+      "required": ["id", "nim", "name", "origin"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "UserProfile",
+      "description": "Private user profiles."
+    },
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Collection of students in the angkatan."
+    }
+  }
+}

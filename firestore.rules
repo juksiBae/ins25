@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required, email format)
+    //   - role: string (required, ['admin', 'moderator', 'participant'])
+    //   - displayName: string (optional)
+    //
+    // Collection: students
+    // Document ID: {studentId}
+    // Fields:
+    //   - id: string (required)
+    //   - nim: string (required, format 2514400XXX)
+    //   - name: string (required)
+    //   - origin: string (required)
+    //   - nickname: string (required)
+    //   - avatarUrl: string (optional, uri format)
+    //   - addedBy: string (optional, uid)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "fafaku6@gmail.com" || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isModerator() {
+      return isAuthenticated() && 
+        (isAdmin() || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'moderator'));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidNIM(nim) {
+      return nim is string && nim.matches("^25\\d{8}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.role in ['admin', 'moderator', 'participant'];
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['id', 'nim', 'name', 'origin', 'nickname']) &&
+             data.id is string &&
+             isValidNIM(data.nim) &&
+             data.name is string &&
+             data.origin is string &&
+             data.nickname is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      allow read: if isAuthenticated() && (request.auth.uid == uid || request.auth.token.email == "fafaku6@gmail.com");
+      allow create: if isAuthenticated() && request.auth.uid == uid;
+      allow update: if isAuthenticated() && (request.auth.uid == uid || request.auth.token.email == "fafaku6@gmail.com");
+      allow delete: if isAuthenticated() && request.auth.token.email == "fafaku6@gmail.com";
+    }
+
+    match /students/{studentId} {
+      allow read: if true;
+      allow create, update: if isAuthenticated() && isModerator();
+      allow delete: if isAuthenticated() && isAdmin();
+    }
+  }
+}
