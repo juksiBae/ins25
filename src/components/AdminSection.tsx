@@ -1,36 +1,113 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, doc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, updateDoc, writeBatch, setDoc, deleteDoc, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { UserProfile, UserRole, Student } from '../types';
+import { UserProfile, UserRole, Student, GalleryItem, AppSettings } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { Input } from './ui/input';
-import { Shield, User, UserCheck, UserCog, Mail, Upload, FileJson, CheckCircle2, Loader2 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Shield, User, UserCheck, UserCog, Mail, Upload, FileJson, CheckCircle2, Loader2, Image as ImageIcon, Trash2, Plus, Settings } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function AdminSection() {
   const { profile } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [csvData, setCsvData] = useState('');
   const [isImporting, setIsImporting] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  
+  // Gallery Form State
+  const [newPhotoUrl, setNewPhotoUrl] = useState('');
+  const [newPhotoTitle, setNewPhotoTitle] = useState('');
+  const [isAddingPhoto, setIsAddingPhoto] = useState(false);
+
+  // App Settings State
+  const [settings, setSettings] = useState<AppSettings>({
+    featuredMemoryUrl: '',
+    featuredMemoryTitle: ''
+  });
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   useEffect(() => {
     if (profile?.role !== 'admin') return;
 
-    const q = query(collection(db, 'users'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    // Users listener
+    const uq = query(collection(db, 'users'));
+    const unsubscribeUsers = onSnapshot(uq, (snapshot) => {
       const userData = snapshot.docs.map(doc => doc.data() as UserProfile);
       setUsers(userData);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'users');
     });
 
-    return () => unsubscribe();
+    // Gallery listener
+    const gq = query(collection(db, 'gallery'), orderBy('addedAt', 'desc'));
+    const unsubscribeGallery = onSnapshot(gq, (snapshot) => {
+      const galleryData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as GalleryItem));
+      setGallery(galleryData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'gallery');
+    });
+
+    // Settings listener
+    const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'app'), (snapshot) => {
+      if (snapshot.exists()) {
+        setSettings(snapshot.data() as AppSettings);
+      }
+    });
+
+    return () => {
+      unsubscribeUsers();
+      unsubscribeGallery();
+      unsubscribeSettings();
+    };
   }, [profile]);
+
+  const updateSettings = async () => {
+    setIsSavingSettings(true);
+    try {
+      await setDoc(doc(db, 'settings', 'app'), settings, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'settings/app');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const addGalleryPhoto = async () => {
+    if (!newPhotoUrl.trim() || !newPhotoTitle.trim()) return;
+    setIsAddingPhoto(true);
+    try {
+      const id = `photo_${Date.now()}`;
+      await setDoc(doc(db, 'gallery', id), {
+        url: newPhotoUrl,
+        title: newPhotoTitle,
+        addedAt: Date.now()
+      });
+      setNewPhotoUrl('');
+      setNewPhotoTitle('');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'gallery');
+    } finally {
+      setIsAddingPhoto(false);
+    }
+  };
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const deleteGalleryPhoto = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await deleteDoc(doc(db, 'gallery', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `gallery/${id}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const updateUserRole = async (uid: string, newRole: UserRole) => {
     try {
@@ -100,6 +177,118 @@ export default function AdminSection() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Settings className="h-6 w-6 text-primary" />
+            <CardTitle>Pengaturan Utama</CardTitle>
+          </div>
+          <CardDescription>
+            Sesuaikan konten utama yang tampil di halaman depan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">URL Featured Memory</label>
+              <Input 
+                placeholder="URL Foto Utama" 
+                value={settings.featuredMemoryUrl}
+                onChange={(e) => setSettings(prev => ({ ...prev, featuredMemoryUrl: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Judul Featured Memory</label>
+              <Input 
+                placeholder="Judul Foto Utama" 
+                value={settings.featuredMemoryTitle}
+                onChange={(e) => setSettings(prev => ({ ...prev, featuredMemoryTitle: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={updateSettings} disabled={isSavingSettings} className="gap-2">
+              {isSavingSettings ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Simpan Perubahan
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <ImageIcon className="h-6 w-6 text-primary" />
+            <CardTitle>Kelola Galeri Perjuangan</CardTitle>
+          </div>
+          <CardDescription>
+            Tambahkan atau hapus foto momen kebersamaan angkatan 25 yang tampil di halaman Home.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-muted/30 p-4 rounded-xl border-2 border-dashed border-muted">
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">URL Foto</label>
+              <Input 
+                placeholder="https://example.com/foto.jpg" 
+                value={newPhotoUrl}
+                onChange={(e) => setNewPhotoUrl(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Judul Momen</label>
+              <div className="flex gap-2">
+                <Input 
+                  placeholder="Contoh: Makrab 2025" 
+                  value={newPhotoTitle}
+                  onChange={(e) => setNewPhotoTitle(e.target.value)}
+                />
+                <Button onClick={addGalleryPhoto} disabled={isAddingPhoto || !newPhotoUrl || !newPhotoTitle}>
+                  {isAddingPhoto ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            <AnimatePresence>
+              {gallery.map((item) => (
+                <motion.div
+                  key={item.id}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className="group relative aspect-square rounded-lg overflow-hidden border bg-muted"
+                >
+                  <img 
+                    src={item.url} 
+                    alt={item.title} 
+                    className="object-cover w-full h-full"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-2 text-center">
+                    <p className="text-[10px] text-white font-bold uppercase mb-2">{item.title}</p>
+                    <Button 
+                      variant="destructive" 
+                      size="icon" 
+                      className="h-8 w-8"
+                      onClick={() => deleteGalleryPhoto(item.id)}
+                      disabled={deletingId === item.id}
+                    >
+                      {deletingId === item.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">

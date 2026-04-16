@@ -64,15 +64,15 @@ export default function GameSection() {
     questionStartTime.current = Date.now();
 
     const wrongOptions: string[] = [];
-    const correctValue = gameMode === 'NAME_TO_ORIGIN' ? randomStudent.origin : randomStudent.name;
+    const correctValue = (gameMode === 'NAME_TO_ORIGIN' ? randomStudent.origin : randomStudent.name) as string;
     
     // Get all possible unique values for the current mode
     const allPossibleValues = Array.from(new Set(students.map(s => 
-      gameMode === 'NAME_TO_ORIGIN' ? s.origin : s.name
+      (gameMode === 'NAME_TO_ORIGIN' ? s.origin : s.name) as string
     ))).filter(v => v !== correctValue);
 
     // Shuffle possible values and take up to 3
-    const shuffledWrong = allPossibleValues.sort(() => Math.random() - 0.5).slice(0, 3);
+    const shuffledWrong = allPossibleValues.sort(() => Math.random() - 0.5).slice(0, 3) as string[];
     wrongOptions.push(...shuffledWrong);
 
     const allOptions = [...wrongOptions, correctValue].sort(() => Math.random() - 0.5);
@@ -119,7 +119,7 @@ export default function GameSection() {
   const handleAnswer = (answer: string) => {
     if (feedback || gameState !== 'playing') return;
 
-    const correctValue = gameMode === 'NAME_TO_ORIGIN' ? currentStudent?.origin : currentStudent?.name;
+    const correctValue = (gameMode === 'NAME_TO_ORIGIN' ? currentStudent?.origin : currentStudent?.name) || '';
     const isCorrect = answer === correctValue;
     const timeTaken = Date.now() - questionStartTime.current;
 

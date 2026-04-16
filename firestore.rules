@@ -101,5 +101,15 @@ service cloud.firestore {
       allow create, update: if isAuthenticated() && isModerator();
       allow delete: if isAuthenticated() && isAdmin();
     }
+
+    match /gallery/{photoId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && isAdmin();
+    }
   }
 }
